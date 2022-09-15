@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const { connect } = require("./config/database");
-const UserModel = require("./Models/user.model");
+const UserModel = require("./models/user.model");
 const ExcersiseModel = require("./models/excersise.model");
 require("dotenv").config();
 
@@ -29,13 +29,22 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
   if (!user) {
     return res.status(404).send("User not found");
   }
+  const excersiseToSave = {
+    ...req.body,
+    username: user.username,
+    date: req.body.date ? new Date(req.body.date) : new Date(),
+  };
   const excersise = await (
-    await new ExcersiseModel({ ...req.body, username: user.username }).save()
+    await new ExcersiseModel(excersiseToSave).save()
   ).toJSON();
   delete excersise.__v;
   user.log.push(excersise);
   await user.save();
-  return res.json(excersise);
+  return res.json({
+    ...excersise,
+    _id: user._id,
+    date: new Date(excersise.date).toDateString(),
+  });
 });
 
 app.get("/api/users", async (req, res) => {
@@ -49,13 +58,22 @@ app.get("/api/users/:_id/logs", async (req, res) => {
   if (from && to) {
     match = { date: { $gt: new Date(from), $lt: new Date(to) } };
   }
-  const user = await UserModel.findById(req.params._id).populate({
+  const user = await UserModel.findById(req.params._id, "-__v").populate({
     path: "log",
     select: "-__v",
     options: { limit },
     match,
   });
-  return res.json({ ...user.toJSON(), count: user.log.length });
+  return res.json({
+    _id: user.toJSON()._id,
+    username: user.toJSON().username,
+    count: user.log.length,
+    log: user.toJSON().log.map((log) => {
+      delete log._id;
+      delete log.username;
+      return { ...log, date: new Date(log.date).toDateString() };
+    }),
+  });
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
